@@ -15,8 +15,7 @@ export const register: Register = (on, options) => {
   const before = String(options.beforeCompact ?? '').trim()
   const note = String(options.summaryNote ?? '').trim()
   const startAt = Math.max(0, Number(options.startAt ?? 0) || 0) * 1000
-  let nudged = 0
-  let queued = false
+  const main: Main = { nudged: 0, queued: false, startAt, before }
   const agents = new Map<string, { tokens: number; nudged: number }>()
 
   on('session.start', async ($, e, next) => {
@@ -43,7 +42,7 @@ export const register: Register = (on, options) => {
       return { deny: `${NAME}: focus is ${text.length} characters, limit ${FOCUS_LIMIT}. Shorten it. Nothing queued.` }
     }
     await $.state.set(focus, text)
-    queued = true
+    main.queued = true
     return { result: 'Queued: the conversation is compacted once this turn ends, and the task continues after it. End the turn now, with one line saying what follows.' }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: `${NAME}: failed, nothing queued.` }))
 
@@ -55,19 +54,20 @@ export const register: Register = (on, options) => {
     return step
   })
 
+  on('prompt.submit', async ($, e, next) => {
+    const nudge = await mainNudge($, main)
+    return next(nudge === null ? e : { ...e, context: [...(e.context ?? []), nudge] })
+  }).catch(($, e, next) => next(e))
+
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     if (e.tool === TOOL || ran.deny !== undefined) return ran
     const agent = e.agentId
-    if (agent === undefined && queued) return ran
-    const { tokens: mainTokens = 0, window } = (await $.session.usage()).context
-    const levels = levelsFor(window, startAt)
     if (agent === undefined) {
-      const [due, remember] = decide(mainTokens, nudged, levels)
-      nudged = remember
-      if (due === null) return ran
-      return { ...ran, context: [...(ran.context ?? []), nudgeText(mainTokens, levels, before, TOOL)] }
+      const nudge = await mainNudge($, main)
+      return nudge === null ? ran : { ...ran, context: [...(ran.context ?? []), nudge] }
     }
+    const levels = levelsFor((await $.session.usage()).context.window, startAt)
     const who = agents.get(agent)
     if (who === undefined) return ran
     const [due, remember] = decide(who.tokens, who.nudged, levels)
@@ -82,7 +82,7 @@ export const register: Register = (on, options) => {
       agents.delete(e.agentId)
       return done
     }
-    queued = false
+    main.queued = false
     const { value: planned = null } = await $.state.get(focus)
     if (planned === null) return done
     await $.state.set(focus, null)
@@ -94,6 +94,18 @@ export const register: Register = (on, options) => {
     $.clock.after(0, () => void compact($, compactInstructions(planned, before, note)))
     return done
   })
+}
+
+type Main = { nudged: number; queued: boolean; readonly startAt: number; readonly before: string }
+
+/** The main session's nudge when its context passed a new step, else null; none while a compaction is queued. */
+async function mainNudge($: EngineInterface, main: Main): Promise<string | null> {
+  if (main.queued) return null
+  const { tokens = 0, window } = (await $.session.usage()).context
+  const levels = levelsFor(window, main.startAt)
+  const [due, remember] = decide(tokens, main.nudged, levels)
+  main.nudged = remember
+  return due === null ? null : nudgeText(tokens, levels, main.before, TOOL)
 }
 
 async function compact($: EngineInterface, instructions: string): Promise<void> {

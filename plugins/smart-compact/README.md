@@ -24,7 +24,7 @@ the wrong tool.
 
 This mod asks instead. A compaction is the first step of a piece of work: the
 next subtask of a long job, or the task the user has just handed over. Past a
-certain size, tool results carry a reminder to compact that way, more insistent
+certain size, tool results and the user's messages carry a reminder to compact that way, more insistent
 as the context grows, each step said once. The agent calls `compact_me` with a
 tweet-sized focus for the compactor (the task it continues with, the ones that
 are done) and ends the turn. The mod runs `/compact` with that focus and sends

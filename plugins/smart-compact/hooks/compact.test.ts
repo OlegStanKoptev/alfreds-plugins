@@ -109,6 +109,15 @@ test('parallel tool calls past a step are nudged once between them', async ($, o
   expect(ran.flatMap(r => [...(r.context ?? [])])).toHaveLength(1)
 })
 
+test('a prompt past a step carries the nudge, so a session that calls no tools hears it too', async ($, on) => {
+  const usage = world(on, { tokens: 240_000 })
+  expect(await prompted($)).toEqual([])
+  usage.tokens = 255_000
+  expect((await prompted($))[0]).toContain('Context 255k > 250k. Compact as the first step of the next piece of work')
+  expect(await nudges($)).toEqual([])
+  expect(await prompted($)).toEqual([])
+})
+
 test('once a focus is queued the nudges stop until the turn ends', async ($, on) => {
   const usage = world(on, { tokens: 255_000 })
   await queue($, 'focus on the parser')
@@ -190,7 +199,7 @@ function world(on: On, start: World) {
   })
   on('prompt.submit', (_, e) => {
     state.calls.push(`submit: ${e.text}`)
-    return { text: e.text }
+    return { text: e.text, context: e.context }
   })
   on('tool.call', () => ({ result: 'ok' }))
   on('turn.complete', () => ({ text: 'done' }))
@@ -216,6 +225,11 @@ async function queue($: Engine, focus: string) {
 async function nudges($: Engine, agentId?: string) {
   const ran = await $.tool.call({ tool: 'Bash', command: 'ls', agentId } as never)
   return [...(ran.context ?? [])]
+}
+
+async function prompted($: Engine) {
+  const entered = await $.prompt.submit({ text: 'what next?', wait: false, origin: { kind: 'composer' } } as never)
+  return [...(entered.drop === undefined ? entered.context ?? [] : [])]
 }
 
 function answered() {

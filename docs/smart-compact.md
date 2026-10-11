@@ -44,6 +44,13 @@ A prompt asking the model to quote verbatim the extra text after tool results
 ends the run with a safety refusal (`reasoning_extraction`); read the
 transcript file instead.
 
+## How 0.2.7 was checked: the nudge on a prompt
+
+The app's 2.1.295 binary headless, `--plugin-dir plugins/smart-compact`,
+`startAt` 10, two prompts on stream-json stdin 25 s apart, neither calling a
+tool. The second prompt's `prompt.submit` carried "Context 28k > 16k. Compact
+now, ..." as context, read from the transcript file; the run had no tool call.
+
 ## The compaction runs as `/compact`, not `$.session.compact`
 
 The desktop app runs its sessions headless (the SDK path), and there
