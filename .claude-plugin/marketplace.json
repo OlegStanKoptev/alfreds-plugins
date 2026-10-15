@@ -17,6 +17,12 @@
       "source": "./plugins/crew",
       "description": "Subagents in three tiers, split by who makes the decisions, a teamlead for a whole slice, and the orchestrator skill that runs a session through them",
       "version": "0.1.2"
+    },
+    {
+      "name": "task-reminder",
+      "source": "./plugins/task-reminder",
+      "description": "The agent is reminded of every shell it left in the background, with the tail and age of its output, until the task ends or the agent stops it",
+      "version": "0.0.1"
     }
   ]
 }
