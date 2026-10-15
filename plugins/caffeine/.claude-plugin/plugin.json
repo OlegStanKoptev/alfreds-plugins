@@ -1,7 +1,7 @@
 {
-  "name": "task-reminder",
-  "version": "0.0.1",
-  "description": "The agent is reminded of every shell it left in the background, with the tail and age of its output, until the task ends or the agent stops it",
+  "name": "caffeine",
+  "version": "0.1.0",
+  "description": "Things that keep agents from falling asleep: reminders of every shell left in the background, and a subagent held from ending its turn while its own commands still run",
   "author": { "name": "Alfred Zien" },
   "types": "./types/index.d.ts",
   "userConfig": {

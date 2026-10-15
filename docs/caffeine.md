@@ -1,14 +1,16 @@
-# task-reminder: engine facts the design rests on
+# caffeine: engine facts the design rests on
 
 Working notes for whoever changes the mod. Each fact names how it was checked
 and on which Claude Code build; recheck on a build that changes the hooks API.
 
 ## How 0.0.1 was checked
 
+The mod was called task-reminder then; the quotes below carry that name.
+
 Headless runs of the app's 2.1.295 binary on `claude-opus-5-5`, as
-`docs/smart-compact.md` describes, with `--plugin-dir plugins/task-reminder`,
+`docs/smart-compact.md` describes, with `--plugin-dir plugins/caffeine`,
 `--debug-file` for the engine's log, and the options passed as
-`--settings '{"pluginConfigs":{"task-reminder":{"options":{"marks":"1 2 3","every":1}}}}'`
+`--settings '{"pluginConfigs":{"caffeine":{"options":{"marks":"1 2 3","every":1}}}}'`
 (the values sit under `options`; a value put straight under the plugin's name
 is ignored without a word). Read from the transcript files and the debug log:
 
@@ -17,10 +19,10 @@ is ignored without a word). Read from the transcript files and the debug log:
   lands as `hook_additional_context` right after the result, in the main
   loop and in a subagent's alike.
 - In an idle session each due reminder came at the first tick past its mark
-  as a prompt of its own, "The task-reminder plugin sent a message:
+  as a prompt of its own, "The caffeine plugin sent a message:
   Reminder: …", with the toast, and the model answered it in a turn of its
-  own. The debug log names the calls, `$.prompt.submit (task-reminder): …`
-  and `$.ui.toast (task-reminder): …`, then "prompt.submit skipped:
+  own. The debug log names the calls, `$.prompt.submit (caffeine): …`
+  and `$.ui.toast (caffeine): …`, then "prompt.submit skipped:
   re-entry" for the mod's own hook, which the engine leaves out for the
   plugin's own prompt.
 - Inside a running turn (a foreground `sleep 140` right after the
@@ -41,14 +43,44 @@ is ignored without a word). Read from the transcript files and the debug log:
 A reminder comes at the first tick past its mark, so up to a minute after
 it: a mark missed by three seconds came as "has run for 2 minutes".
 
+## How 0.1.0 was checked: the subagent hold
+
+The engine raises the settings hook SubagentStop to a module as
+`classic.SubagentStop` (`e.agent_id`, the same id the subagent's `agentId`
+carries in `tool.call` and `turn.complete`), and a `{ block: reason }` result
+keeps the subagent's turn going: the reason reaches it as the next message
+and its loop makes another request. The app's 2.1.299 binary, headless, as
+above, `--setting-sources project` so that the user's own SubagentStop hook
+stays out of the probe, and a haiku subagent told to start `/bin/sleep 25`
+with `run_in_background` and end its turn:
+
+- The first end was blocked with the mod's reason; the subagent waited in a
+  foreground Bash call (25 s), and its second end passed. The lead got the
+  command's real result, and no hand-over note.
+- A subagent told to treat the command as a dev server answered the block with
+  a report naming it and ended again: the second end passed, the hand-over
+  note reached the main conversation, and the lead repeated it.
+
+A completion notice of a subagent's shell does not pass `prompt.submit`, so
+the tracking of such a shell does not end by itself. What the engine does
+write is `[exited with code N]` at the end of the output file; the mod reads
+it before a hold, a hand-over and a reminder, and drops a task that shows it.
+Without that, the first probe handed the lead a "still running" note for a
+command the subagent had waited out. An output over 4 MB is not read, so such
+a task counts as running.
+
+In a plugin a person installs where an organization manages Claude Code,
+`classic.*` events pass over the plugin (`claude plugin validate` says so), so
+the hold needs the plugin to be listed in the managed settings there.
+
 ## An edit of the plugin folder reloads the mod inside every probe
 
 The engine watches each `--plugin-dir` folder ("plugin-dir watch: watching
-task-reminder" in the debug log): live at first, then, after about a minute
+caffeine" in the debug log): live at first, then, after about a minute
 without a change, a poll every 30 seconds. A write there, a `touch`
 included, reloads the mod in the running session: `register` runs again,
 `session.start` is raised for the mod alone ("session.start: raised for
-task-reminder (loaded later)"), the old environment's timers are gone,
+caffeine (loaded later)"), the old environment's timers are gone,
 `$.state` stays. Checked with a `touch` twenty seconds into a probe: the
 ticks moved to the reload's cadence, none of the old one came, no reminder
 doubled, the task stayed tracked, and the reminder due in that minute came
@@ -56,7 +88,7 @@ at the new timer's first tick.
 
 That is what the first two probes ran into: a wording edit landed in the
 minute where the 1-minute reminder was due, both sessions printed
-"task-reminder: reloaded", the due tick never came and the next reminder
+"caffeine: reloaded", the due tick never came and the next reminder
 came a minute after the reload. The clean reruns had every reminder on
 time. So the plugin folder is left alone, no edit, test or validate, while
 a probe of it runs.

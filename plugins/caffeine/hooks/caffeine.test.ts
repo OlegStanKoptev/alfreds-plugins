@@ -73,7 +73,7 @@ test('an idle session is woken with the reminder as a prompt and a toast; a runn
   expect(w.rows()).toEqual([])
   expect(w.prompts).toHaveLength(1)
   expect(w.prompts[0]).toContain('Reminder: background task b1 (`sleep 200`) has run for 5 minutes. No output file was found.')
-  expect(w.toasts).toEqual(['task-reminder: b1 has run for 5 minutes; the agent is reminded'])
+  expect(w.toasts).toEqual(['caffeine: b1 has run for 5 minutes; the agent is reminded'])
   await mainTurn($)
   await w.clock.advance(5 * MINUTE)
   expect(w.prompts).toHaveLength(1)
@@ -151,6 +151,91 @@ test('the options set the marks and the period', { options: { marks: '1 3', ever
   expect(w.rows().map(r => /has run for ([^.]+)\./.exec(r.text)?.[1])).toEqual(['1 minute', '3 minutes', '5 minutes', '7 minutes'])
 })
 
+test("a subagent ending its turn with its shell running is held once; the second end passes and the shell is handed to the main conversation", async ($, on) => {
+  const w = world(on)
+  await $.session.start(started())
+  await mainTurn($)
+  await background($, 'b1', 'sleep 25', { agentId: 'a1' })
+  const held = await stopping($, 'a1')
+  expect(held.block).toContain('These background commands you started are still running:\n- b1: `sleep 25`, output in /t/b1.output\n')
+  expect(held.block).toContain('once your turn ends nothing wakes you')
+  expect(held.block).toContain('Wait for them now in the foreground')
+  expect(held.block).toContain('a dev server')
+  expect(w.rows()).toEqual([])
+  expect((await stopping($, 'a1')).block).toBeUndefined()
+  expect(w.rows()).toEqual([])
+  await $.turn.complete({ ...answered(), agentId: 'a1' } as never)
+  expect(w.rows().map(r => r.agentId)).toEqual([undefined])
+  expect(w.rows()[0]?.text).toContain('Subagent a1 ended, and its background task b1 (`sleep 25`) is still running')
+})
+
+test('a shell the engine ends with the subagent still holds its end, and is dropped when the subagent ends anyway', async ($, on) => {
+  const w = world(on)
+  await $.session.start(started())
+  await mainTurn($)
+  await background($, 'b1', 'sleep 25', { agentId: 'a1', endsWithCaller: true })
+  expect((await stopping($, 'a1')).block).toContain('- b1: `sleep 25`')
+  expect((await stopping($, 'a1')).block).toBeUndefined()
+  await $.turn.complete({ ...answered(), agentId: 'a1' } as never)
+  await w.clock.advance(3 * HOUR)
+  expect(w.rows()).toEqual([])
+})
+
+test('a subagent whose shell ended or was stopped, or that started none, ends without a hold', async ($, on) => {
+  world(on)
+  await $.session.start(started())
+  await mainTurn($)
+  await background($, 'b1', 'sleep 25', { agentId: 'a1' })
+  await background($, 'b2', 'sleep 25', { agentId: 'a1' })
+  await $.prompt.submit({
+    text: '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>',
+    origin: { kind: 'task-notification' }, wait: false,
+  } as never)
+  await $.tool.call({ tool: 'TaskStop', task_id: 'b2' } as never)
+  expect((await stopping($, 'a1')).block).toBeUndefined()
+  expect((await stopping($, 'a2')).block).toBeUndefined()
+})
+
+test("a subagent's shell whose output ends with the exit line is no reason to hold and is not handed over", async ($, on) => {
+  const w = world(on)
+  await $.session.start(started())
+  await mainTurn($)
+  await background($, 'b1', 'sleep 25', { agentId: 'a1' })
+  w.files['/t/b1.output'] = { size: 40, mtimeMs: w.clock.now(), text: 'PROBE_DONE\n\n[exited with code 0]\n' }
+  expect((await stopping($, 'a1')).block).toBeUndefined()
+  await $.turn.complete({ ...answered(), agentId: 'a1' } as never)
+  await w.clock.advance(3 * HOUR)
+  expect(w.rows()).toEqual([])
+})
+
+test("a subagent's shell that exits while the subagent is held is dropped, not handed over as running", async ($, on) => {
+  const w = world(on)
+  await $.session.start(started())
+  await mainTurn($)
+  await background($, 'b1', 'sleep 25', { agentId: 'a1' })
+  w.files['/t/b1.output'] = { size: 5, mtimeMs: w.clock.now(), text: 'going\n' }
+  expect((await stopping($, 'a1')).block).toContain('- b1: ')
+  w.files['/t/b1.output'] = { size: 40, mtimeMs: w.clock.now(), text: 'going\nPROBE_DONE\n\n[exited with code 0]\n' }
+  expect((await stopping($, 'a1')).block).toBeUndefined()
+  await $.turn.complete({ ...answered(), agentId: 'a1' } as never)
+  expect(w.rows()).toEqual([])
+})
+
+test("another loop's shells do not hold a subagent; a shell started after the first hold is held on its own", async ($, on) => {
+  world(on)
+  await $.session.start(started())
+  await mainTurn($)
+  await background($, 'b1', 'sleep 25')
+  await background($, 'b2', 'sleep 25', { agentId: 'a2' })
+  expect((await stopping($, 'a1')).block).toBeUndefined()
+  await background($, 'b3', 'sleep 25', { agentId: 'a1' })
+  expect((await stopping($, 'a1')).block).toContain('- b3: ')
+  await background($, 'b4', 'sleep 25', { agentId: 'a1' })
+  const again = (await stopping($, 'a1')).block
+  expect(again).toContain('- b4: ')
+  expect(again).not.toContain('b3')
+})
+
 type File = { size: number; mtimeMs: number; text: string }
 
 function world(on: On) {
@@ -198,6 +283,7 @@ function world(on: On) {
     if (e.door === 'note') appended.push({ agentId: e.agentId, text: textOf(e.message.content) })
     return next(e)
   })
+  on('classic.SubagentStop', () => ({}))
   on('turn.complete', () => ({ text: 'done' }))
   on('turn.step', async function* (_, e) {
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' } as never
@@ -211,6 +297,11 @@ async function background($: Engine, id: string, command: string, extra: { agent
   const ran = await $.tool.call({ tool: 'Bash', command, description, agentId: extra.agentId } as never)
   expect(ran.deny).toBeUndefined()
   return ran
+}
+
+/** A subagent's end of turn, as the engine raises it to the settings hooks. */
+function stopping($: Engine, agentId: string) {
+  return $.classic.SubagentStop({ agent_id: agentId, agent_type: 'general-purpose', agent_transcript_path: '', stop_hook_active: false })
 }
 
 /** One model request of the main loop: the mod reads it as a turn under way. */

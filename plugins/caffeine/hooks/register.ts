@@ -3,11 +3,11 @@ import { update } from 'claude-code'
 
 import type { Task, Tasks } from '../types'
 import {
-  MINUTE, type Output, type Schedule, firstReminder, nextReminder, orphanNote, outputPath, reminder, schedule, squash, tailOf,
+  MINUTE, type Output, type Schedule, firstReminder, hasExited, holdReason, nextReminder, orphanNote, outputPath, reminder, schedule, squash, tailOf,
   taskId, toastText,
 } from './reminders'
 
-const tasks = { plugin: 'task-reminder', key: 'tasks' } as const
+const tasks = { plugin: 'caffeine', key: 'tasks' } as const
 const READ_LIMIT = 4 * 1024 * 1024
 
 /** Whether the main loop is inside a turn, and whether a reminder pass is under way; both start over on a reload. */
@@ -47,6 +47,7 @@ export const register: Register = (on, options) => {
       agentId: e.agentId ?? null,
       parent: null,
       endsWithCaller: ran.result.backgroundEndsWithFinalResponse === true,
+      held: false,
     }
     await update($, tasks, (all = {}) => ({ ...all, [id]: task }))
     return { ...ran, context: [...(ran.context ?? []), firstReminder(task, now, plan)] }
@@ -68,6 +69,23 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  on('classic.SubagentStop', async ($, e, next) => {
+    const stopped = await next(e)
+    if (stopped.block !== undefined) return stopped
+    const { value: all = {} } = await $.state.get(tasks)
+    const held: Task[] = []
+    for (const task of Object.values(all)) {
+      if (task.agentId !== e.agent_id || task.held) continue
+      if (!(await outputOf($, task.output))?.done) held.push(task)
+    }
+    if (held.length === 0) return stopped
+    const ids = new Set(held.map(task => task.id))
+    await update($, tasks, (cur = {}) => Object.fromEntries(
+      Object.values(cur).map(task => [task.id, ids.has(task.id) ? { ...task, held: true } : task]),
+    ))
+    return { ...stopped, block: holdReason(held) }
+  })
+
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
     if (e.agentId === undefined) {
@@ -75,13 +93,18 @@ export const register: Register = (on, options) => {
       return done
     }
     const ended = e.agentId
+    const { value: before = {} } = await $.state.get(tasks)
+    const finished = new Set<string>()
+    for (const task of Object.values(before)) {
+      if (task.agentId === ended && (await outputOf($, task.output))?.done) finished.add(task.id)
+    }
     const orphans: string[] = []
     await update($, tasks, (all = {}) => {
       orphans.length = 0
       const kept: Tasks = {}
       for (const task of Object.values(all)) {
         if (task.agentId !== ended) kept[task.id] = task
-        else if (!task.endsWithCaller) {
+        else if (!task.endsWithCaller && !finished.has(task.id)) {
           kept[task.id] = { ...task, agentId: null, parent: ended }
           orphans.push(task.id)
         }
@@ -109,6 +132,10 @@ async function remind($: EngineInterface, plan: Schedule): Promise<void> {
     for (const task of Object.values(all)) {
       if (task.remindAt > now) continue
       const output = await outputOf($, task.output)
+      if (output?.done) {
+        await forget($, task.id)
+        continue
+      }
       let owner = task.agentId
       if (owner !== null && !(await toAgent($, reminder(task, now, output, plan), owner))) owner = null
       const sent = owner === null ? { ...task, agentId: null, parent: task.parent ?? task.agentId } : task
@@ -140,8 +167,8 @@ async function outputOf($: EngineInterface, path: string | null): Promise<Output
   } catch {
     return null
   }
-  const tail = stat.size > 0 && stat.size <= READ_LIMIT ? tailOf(String(await $.fs.read(path))) : []
-  return { size: stat.size, mtimeMs: stat.mtimeMs, tail }
+  const text = stat.size > 0 && stat.size <= READ_LIMIT ? String(await $.fs.read(path)) : ''
+  return { size: stat.size, mtimeMs: stat.mtimeMs, tail: tailOf(text), done: hasExited(text) }
 }
 
 /** Appends the text to a subagent's conversation; false when its loop no longer runs. */

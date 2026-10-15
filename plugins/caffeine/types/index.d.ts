@@ -15,13 +15,15 @@ export type Task = {
   parent: string | null
   /** True when the engine ends the shell with its caller's final response, so it cannot outlive the subagent. */
   endsWithCaller: boolean
+  /** True once the subagent's end was held for this task, which is done at most once. */
+  held: boolean
 }
 
 export type Tasks = Record<string, Task>
 
 declare module 'claude-code' {
   interface PluginState {
-    'task-reminder': {
+    'caffeine': {
       tasks: Tasks
     }
   }

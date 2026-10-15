@@ -9,7 +9,8 @@ const COMMAND_WIDTH = 200
 
 export type Schedule = { marks: number[]; every: number }
 
-export type Output = { size: number; mtimeMs: number; tail: string[] }
+/** What an output file says: `done` when the engine wrote its exit line, so the command has ended. */
+export type Output = { size: number; mtimeMs: number; tail: string[]; done: boolean }
 
 /** The schedule from the options: `marks` as "2 5 10 30 60 120" in minutes of run time, `every` in minutes; the defaults where a value does not parse. */
 export function schedule(marks: unknown, every: unknown): Schedule {
@@ -54,8 +55,18 @@ export function orphanNote(task: Task, now: number): string {
     `stop it: TaskStop ${task.id}. The reminders about it come to you from now on.`
 }
 
+/** The reason a subagent's end is held for the background commands it left running. */
+export function holdReason(tasks: Task[]): string {
+  const listed = tasks.map(task => `- ${task.id}: \`${task.command}\`${task.output === null ? '' : `, output in ${task.output}`}`).join('\n')
+  return `These background commands you started are still running:\n${listed}\n` +
+    'You are a subagent: once your turn ends nothing wakes you, so their completion notice will never reach you ' +
+    'and the one who called you gets no report. Wait for them now in the foreground (a Bash until-loop on the output ' +
+    'file ending with "[exited with code", with a timeout), read the result and finish your report. ' +
+    'If a command is meant to keep running after you (a dev server), say so in the report and end the turn again.'
+}
+
 export function toastText(task: Task, now: number): string {
-  return `task-reminder: ${task.id} has run for ${elapsedText(now - task.startedAt)}; the agent is reminded`
+  return `caffeine: ${task.id} has run for ${elapsedText(now - task.startedAt)}; the agent is reminded`
 }
 
 /** The output file's path from the backgrounding text, or null when it names none. */
@@ -66,6 +77,11 @@ export function outputPath(text: string): string | null {
 /** The task id a completion notification names, or null for any other prompt. */
 export function taskId(text: string): string | null {
   return /<task-id>([^<\s]+)<\/task-id>/.exec(text)?.[1] ?? null
+}
+
+/** Whether an output ends with the exit line the engine writes when the command ends. */
+export function hasExited(text: string): boolean {
+  return text.slice(-200).includes('[exited with code')
 }
 
 /** The last non-empty lines of an output, each cut to a line's width. */
