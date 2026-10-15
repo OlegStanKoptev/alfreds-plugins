@@ -48,21 +48,14 @@ export function reminder(task: Task, now: number, output: Output | null, plan: S
     `Is it still needed? If not, stop it: TaskStop ${task.id}. If it is, carry on; the next reminder comes in ${next}.`
 }
 
-/** The note the main conversation gets when a subagent ended and its shell survived it. */
-export function orphanNote(task: Task, now: number): string {
-  return `Subagent ${task.parent} ended, and its background task ${task.id} (\`${task.command}\`) is still running, ` +
-    `${elapsedText(now - task.startedAt)} so far, with nobody watching it now. It is yours: when it is no longer needed, ` +
-    `stop it: TaskStop ${task.id}. The reminders about it come to you from now on.`
-}
-
-/** The reason a subagent's end is held for the background commands it left running. */
+/** The reason a subagent's end is held for the background commands that the engine kills when its turn ends. */
 export function holdReason(tasks: Task[]): string {
   const listed = tasks.map(task => `- ${task.id}: \`${task.command}\`${task.output === null ? '' : `, output in ${task.output}`}`).join('\n')
   return `These background commands you started are still running:\n${listed}\n` +
-    'You are a subagent: once your turn ends nothing wakes you, so their completion notice will never reach you ' +
-    'and the one who called you gets no report. Wait for them now in the foreground (a Bash until-loop on the output ' +
-    'file ending with "[exited with code", with a timeout), read the result and finish your report. ' +
-    'If a command is meant to keep running after you (a dev server), say so in the report and end the turn again.'
+    'You are a foreground subagent: they will be killed when you end your turn, and the one who called you gets no result. ' +
+    'Wait for them now in the foreground (a Bash until-loop on the output file ending with "[exited with code", ' +
+    'with a timeout), read the result and finish your report. ' +
+    'A dev server cannot outlive you: if that is what a command is, say so in the report and end the turn again.'
 }
 
 export function toastText(task: Task, now: number): string {

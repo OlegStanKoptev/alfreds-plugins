@@ -80,7 +80,7 @@ test('an idle session is woken with the reminder as a prompt and a toast; a runn
   expect(w.rows()).toHaveLength(1)
 })
 
-test("a subagent's shell is reminded in its loop; when the loop ends and the shell survives, the main conversation is told at once and reminded after", async ($, on) => {
+test("a background subagent's shell is reminded in its loop, and after the loop is gone in the main conversation, naming the subagent", async ($, on) => {
   const w = world(on)
   await $.session.start(started())
   await mainTurn($)
@@ -88,13 +88,14 @@ test("a subagent's shell is reminded in its loop; when the loop ends and the she
   await w.clock.advance(5 * MINUTE)
   expect(w.rows().map(r => r.agentId)).toEqual(['a1'])
   await $.turn.complete({ ...answered(), agentId: 'a1' } as never)
-  const [, orphan] = w.rows()
-  expect(orphan?.agentId).toBeUndefined()
-  expect(orphan?.text).toContain('Subagent a1 ended, and its background task b1 (`sleep 900`) is still running, 7 minutes so far')
+  expect(w.rows()).toHaveLength(1)
   await w.clock.advance(5 * MINUTE)
+  expect(w.rows().map(r => r.agentId)).toEqual(['a1', 'a1'])
+  w.gone.add('a1')
+  await w.clock.advance(20 * MINUTE)
   const [, , later] = w.rows()
   expect(later?.agentId).toBeUndefined()
-  expect(later?.text).toContain('has run for 10 minutes. It was started by subagent a1, which has ended.')
+  expect(later?.text).toContain('has run for 30 minutes. It was started by subagent a1, which has ended.')
 })
 
 test("a subagent's shell that ends with the subagent is dropped when the subagent ends", async ($, on) => {
@@ -151,42 +152,40 @@ test('the options set the marks and the period', { options: { marks: '1 3', ever
   expect(w.rows().map(r => /has run for ([^.]+)\./.exec(r.text)?.[1])).toEqual(['1 minute', '3 minutes', '5 minutes', '7 minutes'])
 })
 
-test("a subagent ending its turn with its shell running is held once; the second end passes and the shell is handed to the main conversation", async ($, on) => {
-  const w = world(on)
-  await $.session.start(started())
-  await mainTurn($)
-  await background($, 'b1', 'sleep 25', { agentId: 'a1' })
-  const held = await stopping($, 'a1')
-  expect(held.block).toContain('These background commands you started are still running:\n- b1: `sleep 25`, output in /t/b1.output\n')
-  expect(held.block).toContain('once your turn ends nothing wakes you')
-  expect(held.block).toContain('Wait for them now in the foreground')
-  expect(held.block).toContain('a dev server')
-  expect(w.rows()).toEqual([])
-  expect((await stopping($, 'a1')).block).toBeUndefined()
-  expect(w.rows()).toEqual([])
-  await $.turn.complete({ ...answered(), agentId: 'a1' } as never)
-  expect(w.rows().map(r => r.agentId)).toEqual([undefined])
-  expect(w.rows()[0]?.text).toContain('Subagent a1 ended, and its background task b1 (`sleep 25`) is still running')
-})
-
-test('a shell the engine ends with the subagent still holds its end, and is dropped when the subagent ends anyway', async ($, on) => {
+test("a foreground subagent ending its turn with a shell the engine kills with it is held once; the second end passes and the shell is dropped", async ($, on) => {
   const w = world(on)
   await $.session.start(started())
   await mainTurn($)
   await background($, 'b1', 'sleep 25', { agentId: 'a1', endsWithCaller: true })
-  expect((await stopping($, 'a1')).block).toContain('- b1: `sleep 25`')
+  const held = await stopping($, 'a1')
+  expect(held.block).toContain('These background commands you started are still running:\n- b1: `sleep 25`, output in /t/b1.output\n')
+  expect(held.block).toContain('they will be killed when you end your turn')
+  expect(held.block).toContain('Wait for them now in the foreground')
+  expect(held.block).toContain('A dev server cannot outlive you')
+  expect(held.block).not.toContain('nothing wakes you')
   expect((await stopping($, 'a1')).block).toBeUndefined()
   await $.turn.complete({ ...answered(), agentId: 'a1' } as never)
   await w.clock.advance(3 * HOUR)
   expect(w.rows()).toEqual([])
 })
 
+test("a background subagent ends freely with its shell running, and the main conversation is not told it is orphaned", async ($, on) => {
+  const w = world(on)
+  await $.session.start(started())
+  await mainTurn($)
+  await background($, 'b1', 'sleep 25', { agentId: 'a1' })
+  expect((await stopping($, 'a1')).block).toBeUndefined()
+  await $.turn.complete({ ...answered(), agentId: 'a1' } as never)
+  expect(w.rows()).toEqual([])
+  expect(w.prompts).toEqual([])
+})
+
 test('a subagent whose shell ended or was stopped, or that started none, ends without a hold', async ($, on) => {
   world(on)
   await $.session.start(started())
   await mainTurn($)
-  await background($, 'b1', 'sleep 25', { agentId: 'a1' })
-  await background($, 'b2', 'sleep 25', { agentId: 'a1' })
+  await background($, 'b1', 'sleep 25', { agentId: 'a1', endsWithCaller: true })
+  await background($, 'b2', 'sleep 25', { agentId: 'a1', endsWithCaller: true })
   await $.prompt.submit({
     text: '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>',
     origin: { kind: 'task-notification' }, wait: false,
@@ -196,29 +195,30 @@ test('a subagent whose shell ended or was stopped, or that started none, ends wi
   expect((await stopping($, 'a2')).block).toBeUndefined()
 })
 
-test("a subagent's shell whose output ends with the exit line is no reason to hold and is not handed over", async ($, on) => {
+test("a shell whose output ends with the exit line is no reason to hold, and a background subagent's is not handed over", async ($, on) => {
   const w = world(on)
   await $.session.start(started())
   await mainTurn($)
-  await background($, 'b1', 'sleep 25', { agentId: 'a1' })
-  w.files['/t/b1.output'] = { size: 40, mtimeMs: w.clock.now(), text: 'PROBE_DONE\n\n[exited with code 0]\n' }
+  await background($, 'b1', 'sleep 25', { agentId: 'a1', endsWithCaller: true })
+  await background($, 'b2', 'sleep 25', { agentId: 'a1' })
+  const done = { size: 40, mtimeMs: w.clock.now(), text: 'PROBE_DONE\n\n[exited with code 0]\n' }
+  w.files['/t/b1.output'] = done
+  w.files['/t/b2.output'] = done
   expect((await stopping($, 'a1')).block).toBeUndefined()
   await $.turn.complete({ ...answered(), agentId: 'a1' } as never)
   await w.clock.advance(3 * HOUR)
   expect(w.rows()).toEqual([])
 })
 
-test("a subagent's shell that exits while the subagent is held is dropped, not handed over as running", async ($, on) => {
+test('a shell that exits while the subagent is held no longer holds it', async ($, on) => {
   const w = world(on)
   await $.session.start(started())
   await mainTurn($)
-  await background($, 'b1', 'sleep 25', { agentId: 'a1' })
+  await background($, 'b1', 'sleep 25', { agentId: 'a1', endsWithCaller: true })
   w.files['/t/b1.output'] = { size: 5, mtimeMs: w.clock.now(), text: 'going\n' }
   expect((await stopping($, 'a1')).block).toContain('- b1: ')
   w.files['/t/b1.output'] = { size: 40, mtimeMs: w.clock.now(), text: 'going\nPROBE_DONE\n\n[exited with code 0]\n' }
   expect((await stopping($, 'a1')).block).toBeUndefined()
-  await $.turn.complete({ ...answered(), agentId: 'a1' } as never)
-  expect(w.rows()).toEqual([])
 })
 
 test("another loop's shells do not hold a subagent; a shell started after the first hold is held on its own", async ($, on) => {
@@ -226,11 +226,11 @@ test("another loop's shells do not hold a subagent; a shell started after the fi
   await $.session.start(started())
   await mainTurn($)
   await background($, 'b1', 'sleep 25')
-  await background($, 'b2', 'sleep 25', { agentId: 'a2' })
+  await background($, 'b2', 'sleep 25', { agentId: 'a2', endsWithCaller: true })
   expect((await stopping($, 'a1')).block).toBeUndefined()
-  await background($, 'b3', 'sleep 25', { agentId: 'a1' })
+  await background($, 'b3', 'sleep 25', { agentId: 'a1', endsWithCaller: true })
   expect((await stopping($, 'a1')).block).toContain('- b3: ')
-  await background($, 'b4', 'sleep 25', { agentId: 'a1' })
+  await background($, 'b4', 'sleep 25', { agentId: 'a1', endsWithCaller: true })
   const again = (await stopping($, 'a1')).block
   expect(again).toContain('- b4: ')
   expect(again).not.toContain('b3')

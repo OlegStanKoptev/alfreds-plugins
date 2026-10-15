@@ -22,7 +22,7 @@
       "name": "caffeine",
       "source": "./plugins/caffeine",
       "description": "Things that keep agents from falling asleep: reminders of every shell left in the background, and a subagent held from ending its turn while its own commands still run",
-      "version": "0.1.0"
+      "version": "0.1.1"
     }
   ]
 }

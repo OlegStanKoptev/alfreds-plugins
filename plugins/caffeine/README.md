@@ -2,8 +2,8 @@
 
 **TL;DR:** a home for behaviours that keep agents from falling asleep on work
 they started. Two so far: the agent is reminded of every shell it left in the
-background, and a subagent is held from ending its turn while a command it
-started is still running.
+background, and a foreground subagent is held from ending its turn while a
+command the engine would kill with it is still running.
 
 ## Install
 
@@ -36,29 +36,30 @@ A reminder reaches a running turn as a row the model reads at its next step,
 so a session waiting on a long command gets it when that command returns. An
 idle session is woken with the reminder as a prompt, and a toast says so.
 
-A shell a subagent backgrounded is reminded in the subagent's loop. When the
-subagent ends and the shell survives it, the main conversation is told at once
-that the task is now its own, and the later reminders go there. A shell the
-engine ends with the subagent is dropped when the subagent ends.
+A shell a subagent backgrounded is reminded in the subagent's loop. A
+background subagent that ends its turn with its shell running is woken by the
+engine when the shell finishes, so the main conversation is not told anything
+then; if the subagent is gone when a reminder is due, the reminder goes to the
+main conversation, naming the subagent. A shell the engine ends with the
+subagent is dropped when the subagent ends.
 
 Tracking ends with the task's completion notification or a `TaskStop` of it.
 
 ## The subagent hold
 
-A subagent's ended turn is final: nothing resumes it. A subagent that starts a
-command with `run_in_background` and ends its turn saying "waiting for the
-notification" hands the one who called it an empty report, and the command's
-completion reaches nobody.
+A subagent started in the foreground has its shells killed the moment it ends
+its turn, and the one who called it gets only "waiting". A subagent started in
+the background is woken by the engine when its shell finishes, reads the
+output and answers, so it needs no hold.
 
-When a subagent is about to end its turn, the mod looks at the commands it
-started whose output does not yet end with the engine's exit line. If there
-are any, the end is blocked once for them, with a reason that lists the commands, says that after the turn ends
-nothing wakes a subagent, and asks it to wait for them in the foreground and
-then finish its report. A command meant to outlive the subagent, a dev server,
-is to be named in the report, after which the turn may end. The second end
-passes, and a command still running then is handed to the main conversation as
-described above. A command the engine ends together with the subagent counts
-as running: it is the case where its result would be lost.
+When a foreground subagent is about to end its turn, the mod looks at the
+commands it started that the engine ends with its final response (the tool
+result carries `backgroundEndsWithFinalResponse`) and whose output does not yet
+end with the engine's exit line. If there are any, the end is blocked once for
+them, with a reason that lists the commands, says they will be killed when the
+turn ends, and asks the subagent to wait for them in the foreground and then
+finish its report. A command that is really a dev server cannot outlive the
+subagent: it is to be named in the report, after which the turn may end.
 
 Where an organization manages Claude Code, the engine passes over the hook
 of a plugin a person installs; the hold then needs the organization to list

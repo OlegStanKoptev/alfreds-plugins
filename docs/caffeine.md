@@ -31,11 +31,9 @@ is ignored without a word). Read from the transcript files and the debug log:
   reminder arrived afterwards and says … has run for 2 minutes". A turn
   inside one tool call reads nothing until that call returns.
 - A background subagent's shell survives the subagent: its result carries no
-  `backgroundEndsWithFinalResponse`. At the subagent's `turn.complete` the
-  mod's note reached the idle main session as a prompt of its own, and the
-  main session's `TaskStop <id>` on that shell answered "Successfully
-  stopped task". The stop's notification then woke the background subagent
-  too, so a background subagent's loop is not gone after its first turn.
+  `backgroundEndsWithFinalResponse`. The stop's notification of a shell woke
+  the background subagent that had ended its turn, so a background
+  subagent's loop is not gone after its first turn.
 - A completion notification passes `prompt.submit` with origin
   `task-notification` and the text `<task-notification>\n<task-id>…`; the
   tracking ended there in every run.
@@ -45,7 +43,8 @@ it: a mark missed by three seconds came as "has run for 2 minutes".
 
 ## How 0.1.0 was checked: the subagent hold
 
-The engine raises the settings hook SubagentStop to a module as
+The hold below is 0.1.0's, which held every subagent; 0.1.1 narrowed it, see
+the next section. The engine raises the settings hook SubagentStop to a module as
 `classic.SubagentStop` (`e.agent_id`, the same id the subagent's `agentId`
 carries in `tool.call` and `turn.complete`), and a `{ block: reason }` result
 keeps the subagent's turn going: the reason reaches it as the next message
@@ -72,6 +71,40 @@ a task counts as running.
 In a plugin a person installs where an organization manages Claude Code,
 `classic.*` events pass over the plugin (`claude plugin validate` says so), so
 the hold needs the plugin to be listed in the managed settings there.
+
+## How 0.1.1 was checked: the hold only where the shell dies
+
+Claude Code 2.1.301, headless as above, the plugin loaded with `--plugin-dir`,
+haiku subagents told to start `/bin/sleep 20; echo DONE-MARK` in one of two
+ways (`run_in_background`, or a plain Bash call with `timeout: 5000`, which the
+engine moves to the background), each spawned in the foreground and in the
+background: four runs. `backgroundEndsWithFinalResponse` was read from a
+scratch copy of the mod that toasted the Bash result into the debug log
+(`$.ui.toast (caffeine): …`). With caffeine off the same four cases behave as
+the next two bullets say (measured the day before the mod was narrowed).
+
+- `backgroundEndsWithFinalResponse` is `true` in the result of a foreground
+  subagent's backgrounded Bash, for both ways (`run_in_background` and the
+  timeout), and absent in a background subagent's, for both ways. The result
+  text of the foreground one says the shell is "terminated when you give your
+  final response". The flag is reliable on this build, so the mod keys on it.
+- A background subagent that ended its turn with its shell running was woken
+  when the shell finished, read the output file and answered; the lead got an
+  interim "waiting" (a completion notice saying it may resume on its own) and
+  later the real result. A foreground subagent's shell is killed when it ends
+  its turn (task notification "stopped", output ending `[killed]`) and the
+  lead gets only "waiting".
+- With the narrowed hold, the two foreground runs were held once (the
+  "Stop hook feedback" row is in the subagent's transcript file), waited for
+  the shell and returned `DONE-MARK` to the lead; the two background runs
+  ended freely, were woken by the engine and returned `DONE-MARK` to the lead.
+- The first run of the narrowed hold still handed a background subagent's
+  shell to the main conversation at the subagent's `turn.complete` ("nobody
+  watches it now"), and the lead obeyed with `TaskStop`: the shell was killed,
+  the woken subagent read `[killed]`, and the result was lost. That handover is
+  gone: a background subagent's shell stays the subagent's, its reminders go to
+  its loop, and only a reminder the gone loop refuses goes to the main
+  conversation.
 
 ## An edit of the plugin folder reloads the mod inside every probe
 

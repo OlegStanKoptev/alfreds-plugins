@@ -1,9 +1,9 @@
 import type { EngineInterface, Register } from 'claude-code'
 import { update } from 'claude-code'
 
-import type { Task, Tasks } from '../types'
+import type { Task } from '../types'
 import {
-  MINUTE, type Output, type Schedule, firstReminder, hasExited, holdReason, nextReminder, orphanNote, outputPath, reminder, schedule, squash, tailOf,
+  MINUTE, type Output, type Schedule, firstReminder, hasExited, holdReason, nextReminder, outputPath, reminder, schedule, squash, tailOf,
   taskId, toastText,
 } from './reminders'
 
@@ -75,7 +75,7 @@ export const register: Register = (on, options) => {
     const { value: all = {} } = await $.state.get(tasks)
     const held: Task[] = []
     for (const task of Object.values(all)) {
-      if (task.agentId !== e.agent_id || task.held) continue
+      if (task.agentId !== e.agent_id || task.held || !task.endsWithCaller) continue
       if (!(await outputOf($, task.output))?.done) held.push(task)
     }
     if (held.length === 0) return stopped
@@ -98,26 +98,11 @@ export const register: Register = (on, options) => {
     for (const task of Object.values(before)) {
       if (task.agentId === ended && (await outputOf($, task.output))?.done) finished.add(task.id)
     }
-    const orphans: string[] = []
-    await update($, tasks, (all = {}) => {
-      orphans.length = 0
-      const kept: Tasks = {}
-      for (const task of Object.values(all)) {
-        if (task.agentId !== ended) kept[task.id] = task
-        else if (!task.endsWithCaller && !finished.has(task.id)) {
-          kept[task.id] = { ...task, agentId: null, parent: ended }
-          orphans.push(task.id)
-        }
-      }
-      return kept
-    })
-    if (orphans.length === 0) return done
-    const now = await $.clock.now()
-    const { value: all = {} } = await $.state.get(tasks)
-    for (const id of orphans) {
-      const task = all[id]
-      if (task !== undefined) await toMain($, orphanNote(task, now))
-    }
+    await update($, tasks, (all = {}) => Object.fromEntries(
+      Object.values(all)
+        .filter(task => task.agentId !== ended || !(task.endsWithCaller || finished.has(task.id)))
+        .map(task => [task.id, task]),
+    ))
     return done
   })
 }
