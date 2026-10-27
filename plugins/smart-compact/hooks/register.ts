@@ -15,6 +15,8 @@ export const register: Register = (on, options) => {
   const before = String(options.beforeCompact ?? '').trim()
   const note = String(options.summaryNote ?? '').trim()
   const startAt = Math.max(0, Number(options.startAt ?? 0) || 0) * 1000
+  // A subagent hands over instead of compacting, so it may run longer than the main session; 0 follows startAt.
+  const agentStartAt = Math.max(0, Number(options.agentStartAt ?? 0) || 0) * 1000 || startAt
   const main: Main = { nudged: 0, queued: false, startAt, before }
   const agents = new Map<string, { tokens: number; nudged: number }>()
 
@@ -67,7 +69,7 @@ export const register: Register = (on, options) => {
       const nudge = await mainNudge($, main)
       return nudge === null ? ran : { ...ran, context: [...(ran.context ?? []), nudge] }
     }
-    const levels = levelsFor((await $.session.usage()).context.window, startAt)
+    const levels = levelsFor((await $.session.usage()).context.window, agentStartAt)
     const who = agents.get(agent)
     if (who === undefined) return ran
     const [due, remember] = decide(who.tokens, who.nudged, levels)

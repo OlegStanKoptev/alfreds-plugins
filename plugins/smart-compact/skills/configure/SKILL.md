@@ -19,6 +19,9 @@ claude plugin configure smart-compact@alfreds-plugins --json
   automatic: 250k, 300k and 400k in a 1M window, capped at 60%, 70% and 80% of
   a smaller one. A set value is not capped by the window: steps the window
   never reaches stay silent, and the built-in auto-compact fires instead.
+- `agentStartAt`: the same for subagents, which hand over instead of compacting:
+  where a subagent is first asked to finish or write a hand-over. 400 gives
+  400, 480 and 640. 0 follows `startAt`.
 - `beforeCompact`: a step the agent takes before compacting, in lower case,
   since it follows "First " and "Before calling it, ". Example:
   `run the debrief skill`.

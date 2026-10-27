@@ -42,6 +42,8 @@ Nudges start at 250k, 300k and 400k tokens in a 1M window, at 60%, 70% and
 
 - `startAt`: first nudge, in thousands of tokens; the later steps follow in
   proportion (150 gives 150k, 180k, 240k). 0 is the ladder above.
+- `agentStartAt`: the same for subagents' hand-over ladder (400 gives 400k,
+  480k, 640k). 0 follows `startAt`.
 - `beforeCompact`: a step the agent takes first, e.g. `run the debrief skill`.
 - `summaryNote`: an instruction the compactor gets every time, e.g. the
   language of the summary.

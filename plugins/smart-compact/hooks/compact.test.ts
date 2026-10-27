@@ -165,6 +165,17 @@ test("a subagent is asked to hand over on its own context's ladder, once per ste
   expect(await nudges($)).toEqual([])
 })
 
+test('agentStartAt moves only the subagent ladder', { options: { agentStartAt: 400 } }, async ($, on) => {
+  const usage = world(on, { tokens: 255_000 })
+  expect(await nudges($)).toHaveLength(1)
+  await step($, usage, 'a1', 300_000)
+  expect(await nudges($, 'a1')).toEqual([])
+  await step($, usage, 'a1', 401_000)
+  expect((await nudges($, 'a1'))[0]).toContain('Context 401k: a lot, not a limit.')
+  await step($, usage, 'a1', 641_000)
+  expect((await nudges($, 'a1'))[0]).toContain('Context 641k. Stop now: write a hand-over')
+})
+
 test('a finished subagent leaves no ladder behind for an agent reusing its id', async ($, on) => {
   const usage = world(on, { tokens: 100_000 })
   await step($, usage, 'a1', 255_000)
