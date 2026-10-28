@@ -22,6 +22,12 @@ claude plugin install crew@alfreds-plugins
   and stops when reality departs from the brief.
 - `crew:deep`: being wrong is expensive; a design decision, a bug with no
   known cause, a review meant to find what is broken.
+- `crew:codex`: a Haiku driver that hands the task to OpenAI Codex
+  (`codex exec`), so the work runs on your ChatGPT plan. It is the default for
+  spec'd implementation and review fix-ups, and gives second-opinion reviews.
+  Claude still plans, verifies and reviews. Without `codex` installed and
+  logged in, or when it hits a usage limit, the work goes to `crew:solid`.
+  Set `CREW_CODEX_MODEL` to pick the Codex model.
 - `crew:teamlead`: a sub-orchestrator for a slice too big for one task and
   too detailed for the lead's window; it delegates down the same way.
 
