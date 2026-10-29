@@ -10,6 +10,7 @@ Subagents live by the opposite rule, because that wakeup exists only at the top 
 
 - As a subagent: run long commands in the foreground (one Bash call allows up to 10 minutes) or wait blockingly inside the turn. Never end the turn while a background job is alive.
 - As the one spawning: put that instruction into every brief that may run long commands.
+- Waiting for CI is one foreground call: `gh pr checks <n> --watch --interval 30 > <log> 2>&1; echo EXIT=$?` with the Bash timeout at its 10-minute maximum, repeated if it times out. No watcher scripts, no `sleep` loops and no background pollers: each of those is a background job that keeps the hold busy and sends reminders until it ends.
 
 ## A stalled worker
 

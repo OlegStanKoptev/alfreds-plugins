@@ -29,7 +29,12 @@ claude plugin install crew@alfreds-plugins
   logged in, or when it hits a usage limit, the work goes to `crew:solid`.
   Set `CREW_CODEX_MODEL` to pick the Codex model.
 - `crew:teamlead`: a sub-orchestrator for a slice too big for one task and
-  too detailed for the lead's window; it delegates down the same way.
+  too detailed for the lead's window; it delegates down the same way. It runs
+  on Sonnet and hands design decisions to `crew:deep`; one teamlead per PR.
+
+Review rounds stop once a round finds no high and no medium. Re-reviews and
+fixes run on Codex, and a fresh `crew:deep` gives the final review only after
+an earlier round found a high.
 
 Every worker reports in one shape: the claim, the evidence, file paths for
 anything long, what is open. Never a transcript.

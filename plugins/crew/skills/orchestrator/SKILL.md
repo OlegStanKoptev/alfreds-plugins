@@ -28,7 +28,7 @@ Multi-agent pays off on breadth — independent directions that don't need each 
 - **Fan-out** — genuinely independent pieces, each owning its own files. Three focused beat five scattered.
 - **Competing hypotheses** — one question to 2–3 workers from different angles. Their disagreement is the tool.
 - **Pipeline** — stage N needs N−1's output; sequence the spawns instead of fanning out.
-- **Sub-tree (crew:teamlead)** — a slice too big for one task and too detailed for your window. If you can track the pieces yourself, skip the layer.
+- **Sub-tree (crew:teamlead)** — a slice too big for one task and too detailed for your window. If you can track the pieces yourself, skip the layer. One teamlead per PR: a phase of several PRs gets a fresh teamlead for each, briefed from the plan file, since one teamlead carried across PRs re-reads the whole history on every call.
 
 Put the effort budget in the brief — workers can't size a task themselves. A fact lookup: one agent, a handful of calls. A comparison: 2–4 workers, 10–15 calls each. Ten-plus only for genuinely broad research in divided lanes. Always a stopping condition: "not converged after N attempts, report what you have."
 
@@ -63,6 +63,17 @@ Full paths, English, an example for anything easy to get wrong. A worker reading
 **Verify** the end state, not the process: workers legitimately find paths you didn't imagine. Judge by evidence — the test output, the diff, the number — and demand the report shape the worker definitions promise: claim, evidence, artifact paths, open questions. Long slices get checkpoints, states that must hold at each stage. When correctness matters, a fresh agent reviews work it didn't do.
 
 Two cheap filters before any worker claim reaches the user. Quantitative claim: do the ten-second arithmetic (an "env overflowed ARG_MAX" dies to KB-vs-MB in your head). "The system requires X": read the line that would prove it. Filter by what's cheap to check, not by what sounds dubious — technical-sounding packaging is exactly what confabulation wears. What you didn't check gets relayed tagged as an unverified worker claim.
+
+**Review rounds** on a change follow one loop, because re-reviewing until nothing at all is left costs more than the lows it finds.
+
+- Round 1: crew:deep and a crew:codex second opinion, in parallel, on the full diff.
+- Fixes go to crew:codex. Re-reviews go to crew:codex too, briefed with the previous findings and the diff since that round. A fresh crew:deep reviews again only for the last round before merge, and only when an earlier round found a high.
+- A round that finds no high and no medium ends the loop. Its lows go into one fix commit, checked by the tests that cover them, with no further round. Lows that are not worth that commit go to a follow-up issue.
+- Three rounds that still find a high or medium mean the design is wrong, not the code: stop and report up.
+
+**Before a brief goes to crew:codex**, read it once for contradictions: a limit that differs from the schema it cites, a required output with no format, two rules that cannot both hold. Codex stops on a contradiction rather than choosing, so a contradictory brief costs a run. When Codex does stop on one, fix the brief and send it to Codex again; that is a briefing failure, not a reason to move the work to crew:solid.
+
+**Tests** run once per head. Whoever implemented or fixed a commit runs the full suite and the review brief quotes its last lines and the commit. A reviewer runs the tests that cover what changed and its own probes, and the full suite only when it suspects a break outside the diff.
 
 **Integrate** — the hands-on job that's genuinely yours. Two workers disagreeing is signal: one is wrong, or a brief was, and it gets resolved before you build on either. The assembly edit that fits verified pieces together is judgment; don't delegate the seam.
 

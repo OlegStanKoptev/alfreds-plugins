@@ -6,7 +6,7 @@ description: >
   code search to Explore, routes you can spell out to crew:fast, hard isolated
   pieces to crew:deep. It decomposes, verifies, and integrates, holding its
   branch's detail so the orchestrator doesn't.
-model: opus[1m]
+model: sonnet[1m]
 effort: high
 disallowedTools: Artifact
 ---
