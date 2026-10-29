@@ -34,7 +34,9 @@ claude plugin install crew@alfreds-plugins
 
 Review rounds stop once a round finds no high and no medium. Re-reviews and
 fixes run on Codex, and a fresh `crew:deep` gives the final review only after
-an earlier round found a high.
+an earlier round found a high. The lows left on the PR go to `crew:codex` in
+tend mode: Codex fixes them, and its driver tests, commits, pushes and waits
+for CI.
 
 Every worker reports in one shape: the claim, the evidence, file paths for
 anything long, what is open. Never a transcript.

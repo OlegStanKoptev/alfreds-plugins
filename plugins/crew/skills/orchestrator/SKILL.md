@@ -68,7 +68,7 @@ Two cheap filters before any worker claim reaches the user. Quantitative claim: 
 
 - Round 1: crew:deep and a crew:codex second opinion, in parallel, on the full diff.
 - Fixes go to crew:codex. Re-reviews go to crew:codex too, briefed with the previous findings and the diff since that round. A fresh crew:deep reviews again only for the last round before merge, and only when an earlier round found a high.
-- A round that finds no high and no medium ends the loop. Its lows go into one fix commit, checked by the tests that cover them, with no further round. Lows that are not worth that commit go to a follow-up issue.
+- A round that finds no high and no medium ends the loop. Its lows go to crew:codex in tend mode, with no further round: the brief lists the findings, the PR branch, the files they touch, the tests that cover them and the commit message, and Codex fixes while its driver tests, commits, pushes and waits for CI. Before merge, read the diff from the last reviewed commit to the head, and check it touches only the files the brief named. Lows that are not worth a commit go to a follow-up issue.
 - Three rounds that still find a high or medium mean the design is wrong, not the code: stop and report up.
 
 **Before a brief goes to crew:codex**, read it once for contradictions: a limit that differs from the schema it cites, a required output with no format, two rules that cannot both hold. Codex stops on a contradiction rather than choosing, so a contradictory brief costs a run. When Codex does stop on one, fix the brief and send it to Codex again; that is a briefing failure, not a reason to move the work to crew:solid.
