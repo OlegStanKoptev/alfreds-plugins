@@ -1,6 +1,8 @@
 # alfreds-plugins
 
-Claude Code mods I use myself.
+Claude Code mods, with a [provider-neutral T3 Code edition](portable/README.md).
+
+The original Claude plugins remain under `plugins/`. The portable edition uses T3 delegation, cooperative task tracking, and durable handovers; it does not load Claude engine hooks in other providers.
 
 ```bash
 claude plugin marketplace add zienag/alfreds-plugins
